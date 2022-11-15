@@ -17,8 +17,7 @@ Scrapes comment data from weekly top N posts in a subreddit
 class Scrape:
     def __init__(self, subreddit, numOfPosts):
         self.numOfPosts = int(numOfPosts)
-        self.timeout = .5
-        driver.get(f"https://old.reddit.com/r/{subreddit}/top/?sort=top&t=week")
+        driver.get(f"https://old.reddit.com/r/{subreddit}/top/?sort=top&t=month")
         self.getComments()
         driver.close()
         
@@ -85,7 +84,6 @@ class Scrape:
             comment["comment_body"] = div.find("div", class_="comment-body").get_text()
             comment["mod_deleted"] = 1 if "removed" in classes else 0
             comment["user_deleted"] = 1 if "deleted" in classes else 0
-            #print(comment)
             comments.append(comment)
         return comments
 
@@ -104,32 +102,45 @@ def getUserInfo():
     df = pd.read_csv('comments.csv')
     max = len(df) - 1
     i = 0
+    usersDict = {}
     users = df['user'].apply(lambda x: x.split("/")[-1] if type(x) is not float else None)
     keys = ["verified", "is_gold", "has_verified_email", "link_karma", "total_karma", "created_utc", "comment_karma"]
     for key in keys:
         info[key] = []
     for user in users:
-        url = f"https://www.reddit.com/user/{user}/about.json"
-        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:102.0) Gecko/20100101 Firefox/102.0'})
-        time.sleep(.5)
         print(f"{i}/{max}")
-        if r.status_code == 200:
-            data = r.json()["data"]
-            data_keys = list(data.keys())
+        if user is None:
             for key in keys:
-                if key in data_keys:
-                    val = data[key]
-                    info[key].append(val)
-                else:
-                    info[key].append(None)
+                info[key].append(None)
+            i = i + 1
+            continue
+        data = {}
+        if user in usersDict:
+            data = usersDict[user]
         else:
-            print(f"Status code: {r.status_code}")
-            for key in keys:
+            time.sleep(.25)
+            url = f"https://www.reddit.com/user/{user}/about.json"
+            r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:102.0) Gecko/20100101 Firefox/102.0'})
+            if r.status_code == 200:
+                data = r.json()["data"]
+                usersDict[user] = data
+            else:
+                print(f"Status code: {r.status_code}, {url}")
+                for key in keys:
+                    info[key].append(None)
+                i = i + 1
+                continue
+        data_keys = list(data.keys())
+        for key in keys:
+            if key in data_keys:
+                val = data[key]
+                info[key].append(val)
+            else:
                 info[key].append(None)
         i = i + 1
     for key in keys:
         df[key] = info[key]
-    df.to_csv("comments_full.csv")
+    df.to_csv("comments_full.csv", index=False)
 
 
 
